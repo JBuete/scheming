@@ -33,7 +33,7 @@ _verts = numpy.array([(0.2, 0.0),
                       (0.0, 0.0),
                       (0.2, 0.0)])
 
-_scale = numpy.array([1, 1.5])
+_scale = numpy.array([1, 1.5]) * 1.5
 
 # and the associated curves
 _codes = numpy.array([matplotlib.path.Path.MOVETO,
@@ -165,13 +165,15 @@ def _visualise_movement():
 
     matplotlib.pyplot.waitforbuttonpress()
 
+
 _balances = {'D65': (95.0489, 100, 108.8840)}
 _xyz_srgb_matrix = numpy.array([[3.2404542, -1.5371385, -0.4985314],
                                 [-0.9692660,  1.8760108,  0.0415560],
                                 [0.0556434, -0.2040259,  1.0572252]])
 
-class Colour():
 
+class Colour():
+    """The colour object."""
 
     def __init__(self, value, illuminant='D65'):
         self.L = value[0]
@@ -195,7 +197,7 @@ class Colour():
         return "#{0:02x}{1:02x}{2:02x}".format(r, g, b)  # strip off the hex garbage
 
     def _f_prime(self, t):
-        """The inverse weighting function for Lab -> XYZ."""
+        """Calculate the inverse weighting function for Lab -> XYZ."""
         delta = 6 / 29  # some constant
 
         if t > delta:
@@ -217,7 +219,7 @@ class Colour():
         # and clip the values
         RGB[RGB >= 1] = 1
         RGB[RGB <= 0] = 0
-        return numpy.round_(RGB * 255)
+        return numpy.round_(RGB * 255).astype(numpy.int32)
 
     def _to_xyz(self):
         """Return the XYZ representation of the colour."""
@@ -226,6 +228,10 @@ class Colour():
         y = self.xyz_norm[1] * self._f_prime((self.L + 16) / 116)
         z = self.xyz_norm[2] * self._f_prime((self.L + 16) / 116 - self.b / 200)
         return numpy.array([x, y, z]) / 100
+
+    def get_rgb_string(self):
+        """Return a formatted rgb string."""
+        return "({0:d}, {1:d}, {2:d})".format(self.rgb[0], self.rgb[1], self.rgb[2])
 
 
 class ColourScheme():
@@ -244,7 +250,7 @@ class ColourScheme():
     def reroll(self):
         """Regenerate the colours."""
         self.colours = self._find_colours()
-        self.show()
+        # self.show()
 
     def set_chroma_limit(self, a, b):
         """Set the limits on the chroma scale."""
