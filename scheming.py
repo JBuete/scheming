@@ -5,7 +5,6 @@ A colour scheme generating application.
 author: Jacob Buete
 """
 import colours
-import logging
 import matplotlib.patches
 import matplotlib.pyplot
 import numpy
@@ -39,7 +38,7 @@ class FileRegion(tkinter.Frame):
         if filename:
             try:
                 # we want to set this filename to the
-                self.parent.master.parent.parent.master.plot_layout.data = numpy.genfromtxt(filename, delimiter="\t")
+                self.parent.master.parent.parent.plot_layout.data = numpy.genfromtxt(filename, delimiter="\t")
             except OSError:
                 tkinter.messagebox.showerror("Open Source File", "Failed to read in {}".format(filename))
 
@@ -89,7 +88,8 @@ class ColourPicker(tkinter.Frame):
         self.preset_label = tkinter.ttk.Label(self.preset_stack, text="Presets", anchor="center")
         self.preset_menu = tkinter.ttk.Combobox(self.preset_stack, textvariable=self.preset)
         self.preset_menu['values'] = list(self.preset_options.keys())
-        self.preset_menu.current(0)
+        self.preset_menu.current(1)
+        self._update_sliders("event_gibberish")
         self.preset_menu.bind("<<ComboboxSelected>>", self._update_sliders)
 
         # the button to generate the colours
@@ -204,6 +204,14 @@ class ColourViewer(tkinter.Frame):
 
         self._draw()
 
+    def update_colours(self, **args):
+        """Update the colours to reflect the given colourblindness."""
+        # iternate through the colours
+        n_colours = len(self.swatches)
+        for i in range(n_colours):
+            colour = colours.Colourblind(self.parent.scheme.colours[i].rgb, linear=False).as_though(**args)
+            self.swatches[i].coloured.config(bg=colour)
+
     def _draw(self):
         """Draw the colourscheme in a nicer way."""
         # first let's check the number of colours that we're looking at
@@ -223,9 +231,9 @@ class ColourViewer(tkinter.Frame):
 
         # check if the number of colours has changed
         if n_colours == len(self.swatches):
-            # if it's the same we can just update them
+            viewer = self.parent.parent.view
+            self.update_colours(**viewer.colourblind_args[viewer.index[viewer.selected]])
             for i in range(n_colours):
-                self.swatches[i].coloured.config(bg=self.parent.scheme.colours[i].hex)
                 self.swatches[i].rgb_name.config(text=self.parent.scheme.colours[i].get_rgb_string())
                 self.swatches[i].hex_name.config(text=self.parent.scheme.colours[i].hex)
         else:  # we have to remake everything
@@ -236,7 +244,7 @@ class ColourViewer(tkinter.Frame):
             frame_backup = tkinter.ttk.LabelFrame(self, text="Colours")
             # now let's start adding some things
             for i in range(n_rows):
-                # self.swatches.append([])
+                # add a card
                 self.cards.append(SwatchCard(frame_backup))
                 for j in range(n_cols):
                     # first make the swatch
@@ -246,13 +254,13 @@ class ColourViewer(tkinter.Frame):
                                     self.parent.scheme.colours[i * n_cols + j].hex)
                     # add it to the list
                     self.swatches.append(swatch)
-    
+
                     # and then add it to the carc
                     self.swatches[i * n_cols + j].pack(side="left", fill="both", expand=True)
-    
+
                 # now add the card to the frame
                 self.cards[i].pack(side="top", fill="both", expand=True)
-    
+
             self.frame.destroy()
             self.frame = frame_backup
             self.frame.pack(side="left", fill="both", expand=True)
@@ -326,39 +334,103 @@ class ColourRegion(tkinter.Frame):
         self.viewer._draw()
 
 
-class PlotRegion(tkinter.ttk.LabelFrame):
-    """A region for the plot to go."""
-
-    def __init__(self, parent, *args, **kwargs):
-        # first let's make sure we do the frame things
-        tkinter.ttk.LabelFrame.__init__(self, parent, *args, **kwargs)
-        self.config(text="Plot")
-        self.parent = parent
-
-        # some filler
-        # self.label = tkinter.ttk.Label(self, text="plot region")
-
-        # let's create the figure
-        self.figure = matplotlib.pyplot.figure(frameon=False)
-        self.ax = self.figure.add_subplot(1, 1, 1, aspect="equal")
-        # self.ax.axis("off")
-
-        self._canvas = FigureCanvasTkAgg(self.figure, master=self)
-        self._canvas.draw()
-
-        self.canvas = self._canvas.get_tk_widget()
-        self.canvas.pack(side="left", fill="both", expand=True)
-
-        # and geometry management
-        # self.label.pack(expand=True)
-
-
-class PlotViewOptions(tkinter.LabelFrame):
-    """The viewing options for the plot."""
+class ViewOptions(tkinter.LabelFrame):
+    """The viewing options for the colours."""
 
     def __init__(self, parent, *args, **kwargs):
         tkinter.ttk.LabelFrame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
+
+        # first thing to do is make some buttons
+        # we can probably make a grid here to make it easier
+        self.normal = tkinter.Button(self, text="No Deficiency (95%)",
+                                     command=lambda x="normal": self._selected(x))
+        self.greyscale = tkinter.Button(self, text="Greyscale",
+                                        command=lambda x="greyscale": self._selected(x))
+        self.deuteranomaly = tkinter.Button(self, text="Deuteranomaly (2.7%)",
+                                            command=lambda x="deuteranomaly": self._selected(x))
+        self.deuteranopia = tkinter.Button(self, text="Deuteranopia (0.55%)",
+                                           command=lambda x="deuteranopia": self._selected(x))
+        self.protanomaly = tkinter.Button(self, text="Protanomaly (0.66%)",
+                                          command=lambda x="protanomaly": self._selected(x))
+        self.protanopia = tkinter.Button(self, text="Protanopia (0.58%)",
+                                         command=lambda x="protanopia": self._selected(x))
+        self.tritanomaly = tkinter.Button(self, text="Tritanomaly (0.01%)",
+                                          command=lambda x="tritanomaly": self._selected(x))
+        self.tritanopia = tkinter.Button(self, text="Tritanopia (0.015%)",
+                                         command=lambda x="tritanopia": self._selected(x))
+
+        self.buttons = [self.normal,
+                        self.greyscale,
+                        self.deuteranomaly,
+                        self.deuteranopia,
+                        self.protanomaly,
+                        self.protanopia,
+                        self.tritanomaly,
+                        self.tritanopia]
+
+        self.index = {"normal": 0,
+                      "greyscale": 1,
+                      "deuteranomaly": 2,
+                      "deuteranopia": 3,
+                      "protanomaly": 4,
+                      "protanopia": 5,
+                      "tritanomaly": 6,
+                      "tritanopia": 7}
+
+        self.colourblind_args = [{"condition": "normal", "anomalise": False, "_hex": True},
+                                 {"condition": "achroma", "anomalise": False, "_hex": True},
+                                 {"condition": "deutan", "anomalise": True, "_hex": True},
+                                 {"condition": "deutan", "anomalise": False, "_hex": True},
+                                 {"condition": "protan", "anomalise": True, "_hex": True},
+                                 {"condition": "protan", "anomalise": False, "_hex": True},
+                                 {"condition": "tritan", "anomalise": True, "_hex": True},
+                                 {"condition": "tritan", "anomalise": False, "_hex": True}]
+
+        # define normal to be selected first
+        self.selected = "normal"
+        self._selected("normal")
+
+        # now do the grid things
+        for i in range(4):
+            self.grid_columnconfigure(i, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        # now layout the buttons
+        for j in range(2):
+            for i in range(4):
+                self.buttons[j + i * 2].grid(column=i, row=j, sticky='nsew')
+
+    def _selected(self, event):
+        """Signal the change in selection."""
+        print(event)
+
+        # now update the button
+        self.buttons[self.index[self.selected]].config(relief="raised")
+        self.buttons[self.index[event]].config(relief="sunken")
+
+        # make sure this is tracked
+        self.selected = event
+
+        # we also need to make sure that we update the colours
+        self.parent.colours.viewer.update_colours(**self.colourblind_args[self.index[self.selected]])
+
+
+class PlotLayoutIntroduction(tkinter.Frame):
+    """The Introduction and control for the PlotLayout."""
+
+    def __init__(self, parent, *args, **kwargs):
+        tkinter.Frame.__init__(self, parent, *args, **kwargs)
+        self.parent = parent
+
+        self.message = tkinter.Message(self, text=("Here is where you can customise your plot. "
+                                                   + "\nThe colour, x, y, x_err, and y_err are specified with their "
+                                                   + "index."), width=600)
+        self.plot_button = tkinter.ttk.Button(self, text="Plot", command=self.parent.plot.make_plot)
+
+        self.message.pack(side="left", fill="x", expand=True)
+        self.plot_button.pack(side="right", fill="x", expand=True)
 
 
 class PlotLayout(tkinter.ttk.LabelFrame):
@@ -369,19 +441,127 @@ class PlotLayout(tkinter.ttk.LabelFrame):
         tkinter.ttk.LabelFrame.__init__(self, parent, *args, **kwargs)
         # self.config(bg="magenta")
         self.parent = parent
+        # make a local copy of the plot
+        self.plot = self.parent.plot
         self.data = None
 
         # self.label_frame = tkinter.ttk.LabelFrame(self, text="Plot Layout")
         self.header = PlotLayoutHeader(self)
+        self.intro = PlotLayoutIntroduction(self)
         self.entries = []
 
         # self.label_frame.pack(side="top", fill="both", expand=True)
+        self.intro.pack(side="top", fill="x", expand=True)
         self.header.pack(side="top", fill="x", expand=True)
 
         for i in range(5):
             self.entries.append(PlotLayoutEntry(self))
             self.entries[i].pack(side="top", fill="x", expand=True)
 
+    def _make_plot(self):
+        """Create the plot."""
+        # the first thing to do is to figure out which lines are going to be used
+        for i in range(len(self.entries)):
+            # we will use the colour column as the indication
+            if self.entries[i].colour_choice.get() != "":  # we have a value here
+                pass
+
+
+class PlotRegion(tkinter.ttk.LabelFrame):
+    """A region for the plot to go in."""
+
+    def __init__(self, parent, *args, **kwargs):
+        # first let's make sure we do the frame things
+        tkinter.ttk.LabelFrame.__init__(self, parent, *args, **kwargs)
+        self.config(text="Plot")
+        self.parent = parent
+        self.layout = None
+
+        # let's create the figure
+        self.figure = matplotlib.pyplot.figure(frameon=False)
+        self.ax = self.figure.add_subplot(1, 1, 1)
+        # self.ax.axis("off")
+
+        self._canvas = FigureCanvasTkAgg(self.figure, master=self)
+        self._canvas.draw()
+
+        self.canvas = self._canvas.get_tk_widget()
+        self.canvas.pack(side="left", fill="both", expand=True)
+        
+        # this is where we define the plot values
+        self.lines = []
+        self.points = []
+        self.errors = []
+
+    def make_plot(self):
+        """Make the given plot."""
+        # first clear the plotables and the axes
+        self.lines = []
+        self.points = []
+        self.errors = []
+        self.ax.cla()
+        
+        self.layout = self.parent.plot_layout
+        use_legend = False
+        
+        # now figure out which elements we plot
+        for entry in self.layout.entries:
+            if entry.colour_choice.get() != "":
+                # then we have a valid plot choice
+                # and we can start to make the plot
+                # first up figure out the colour we can use
+                colour = colours.Colourblind(self.parent.colours.scheme.colours[int(entry.colour_choice.get())].rgb,
+                                             linear=False)
+                
+                print(self.parent.colours.scheme.colours[int(entry.colour_choice.get())].hex)
+                # and how to view that colour
+                viewer = self.parent.view
+                effective_colour = colour.as_though(**viewer.colourblind_args[viewer.index[viewer.selected]])
+                print(effective_colour)
+                # check the legend
+                label = None
+                if entry.legend.get() != "":
+                    label = entry.legend.get()
+                    use_legend = True
+                
+                # now check if we are using error bars or not
+                if entry.x_err.get() != "" or entry.y_err.get() != "":
+                    if entry.x_err.get() == "":
+                        x_errors = None
+                        y_errors = self.layout.data[:, int(entry.y_err.get())]
+                    else:
+                        y_errors = None
+                        x_errors = self.layout.data[:, int(entry.y_err.get())]
+                    
+                    # make the plot and store the result
+                    self.errors.append(self.ax.errorbar(self.layout.data[:, int(entry.x.get())], 
+                                                        self.layout.data[:, int(entry.y.get())],
+                                                        yerr=y_errors,
+                                                        xerr=x_errors,
+                                                        markerfacecolor=effective_colour,
+                                                        markeredgecolor=effective_colour,
+                                                        ecolor=effective_colour,
+                                                        fmt='o',
+                                                        label=label))
+                else:
+                    # we don't have errors
+                    # in this case we will just check lines for this moment
+                    if entry.x.get() == "":
+                        self.lines.append(self.ax.plot(self.layout.data[:, int(entry.y.get())],
+                                                       color=effective_colour,
+                                                       label=label))
+                    else:
+                        self.lines.append(self.ax.plot(self.layout.data[:, int(entry.x.get())],
+                                                       self.layout.data[:, int(entry.y.get())],
+                                                       color=effective_colour,
+                                                       label=label))
+                        
+        # make the legend
+        
+        self.ax.legend()
+        
+        # and draw the values
+        self._canvas.draw()
 
 class PlotLayoutEntry(tkinter.Frame):
     """The entry fields for the plot layout."""
@@ -516,15 +696,15 @@ class MainApplication(tkinter.Frame):
 
         # add things
         self.colours = ColourRegion(self, height=450, width=750)
-        self.plot_layout = PlotLayout(self, height=450, width=750, text="Plot Layout")
         self.plot = PlotRegion(self, height=750, width=750)
-        self.plot_view = PlotViewOptions(self, height=150, width=750, text="Viewing Options")
+        self.plot_layout = PlotLayout(self, height=450, width=750, text="Plot Layout")
+        self.view = ViewOptions(self, height=150, width=750, text="Viewing Options")
 
         # now do some geometry management
         self.colours.grid(column=0, row=0, sticky="nsew")
         self.plot_layout.grid(column=0, row=1, sticky="nsew")
         self.plot.grid(column=1, row=0, sticky="nsew")
-        self.plot_view.grid(column=1, row=1, sticky="nsew")
+        self.view.grid(column=1, row=1, sticky="nsew")
 
 
 if __name__ == "__main__":
