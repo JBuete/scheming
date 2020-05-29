@@ -3,7 +3,6 @@ import matplotlib.pyplot
 import matplotlib.path
 import matplotlib.patches
 import scipy.spatial
-import time
 
 # we also want the 3D stuff for the time being
 from mpl_toolkits.mplot3d import Axes3D
@@ -20,10 +19,10 @@ except AttributeError:
 
 # define the vertices of the paths
 _verts = numpy.array([(0.2, 0.0),
-                      (0.8, 0.0), # start of the lower right corner
-                      (1.0, 0.0), # intermediate point (as if it wasn't rounded)
-                      (1.0, 0.2), # end point of the lower right corner
-                      (1.0, 0.8), # move to the next point etc.
+                      (0.8, 0.0),  # start of the lower right corner
+                      (1.0, 0.0),  # intermediate point (as if it wasn't rounded)
+                      (1.0, 0.2),  # end point of the lower right corner
+                      (1.0, 0.8),  # move to the next point etc.
                       (1.0, 1.0),
                       (0.8, 1.0),
                       (0.2, 1.0),
@@ -50,6 +49,7 @@ _codes = numpy.array([matplotlib.path.Path.MOVETO,
                       matplotlib.path.Path.CURVE3,
                       matplotlib.path.Path.CURVE3])
 
+
 # and make the path
 def _rounded_verts(x_offset, y_offset):
     return matplotlib.path.Path(_verts * _scale + numpy.array([x_offset, y_offset]), _codes)
@@ -58,7 +58,9 @@ def _rounded_verts(x_offset, y_offset):
 # this will hold the offsets (duplicate coordinates) for the periodic boundary conditions
 _offset_cubes = numpy.array([(i, j, k) for i in range(-1, 2) for j in range(-1, 2) for k in range(-1, 2)])
 
+
 class Points():
+    """A collection of points."""
 
     def __init__(self, n, force=2, dim=3, scale=10, periodic=False):
         # first make the random points in a 1x1x1 cube centred at the origin
@@ -87,7 +89,6 @@ class Points():
     @profile
     def _get_distances(self):
         """Calculate the separation between each pair of points."""
-
         # here we want to account for periodic boundary conditions
         if self.periodic:
             # we want to duplicate the volume on each side of the cube
@@ -98,11 +99,12 @@ class Points():
             dist = scipy.spatial.distance.cdist(self.points, new_points)
 
             # reshape for improved performance
-            dist = dist.reshape((self.points.shape[0], new_points.shape[0] // self.points.shape[0], self.points.shape[0]))
+            dist = dist.reshape((self.points.shape[0],
+                                 new_points.shape[0] // self.points.shape[0],
+                                 self.points.shape[0]))
             result2 = numpy.min(dist, axis=1)
 
             return result2
-
 
         return scipy.spatial.distance.cdist(self.points, self.points)
 
@@ -118,8 +120,8 @@ class Points():
 
         # now we can calculate the forces
         forces = numpy.zeros(vectors.shape)
-        forces[dist != 0] = self.force * vectors[dist != 0]  / dist.reshape(vectors.shape[0], vectors.shape[1], 1)[dist != 0]**self.dim
-        # forces[mask] = self.force * vectors[mask]  / dist.reshape(vectors.shape[0], vectors.shape[1], 1)[mask]**self.dim
+        forces[dist != 0] = (self.force * vectors[dist != 0]
+                             / dist.reshape(vectors.shape[0], vectors.shape[1], 1)[dist != 0]**self.dim)
 
         # now sum the forces for each point
         total_forces = forces.sum(axis=0)
@@ -134,7 +136,6 @@ class Points():
         else:
             self.points[self.points >= self.scale] = self.scale
             self.points[self.points <= 0] = 0
-
 
     def spread(self, times=200, dt=1):
         """Spread the points throughout the available space."""
@@ -202,7 +203,6 @@ class Colourblind():
 
         # and now to xyy (which is different somehow?)
         self.xyy = self._xyz_to_xyy()
-        
 
     def _linear_to_RGB(self):
         """Convert linear rgb to RGB."""
@@ -397,7 +397,7 @@ class Colour():
 
 
 class ColourScheme():
-
+    """A collection of perceptually uniformly spaced colours within a given range."""
 
     def __init__(self, n):
         """Generate a colour scheme of n colours."""
@@ -498,7 +498,6 @@ class ColourScheme():
 
         return a_min, a_max, b_min, b_max
 
-
     def _find_colours(self):
         """Find the colours in perceptually uniform space."""
         # first we should make a set of points
@@ -533,7 +532,8 @@ class ColourScheme():
 
         # now let's make the patches
         for index, colour in enumerate(self.colours):
-            patch = matplotlib.patches.PathPatch(_rounded_verts(x_offset * (index % ncol), -y_offset * (index // ncol)),
+            patch = matplotlib.patches.PathPatch(_rounded_verts(x_offset * (index % ncol),
+                                                                -y_offset * (index // ncol)),
                                                  facecolor=colour.rgb/255, lw=0.5)
 
             ax.add_patch(patch)
@@ -542,28 +542,6 @@ class ColourScheme():
         ax.set_xlim(0, 10)
 
         matplotlib.pyplot.show()
-
-
-def _interval_testing():
-
-    h_range = numpy.linspace(280, 335, 100) * numpy.pi / 180
-    c_range = numpy.linspace(0.2, 0.7, 100)
-
-    test = c_range[:, None] * numpy.cos(h_range)
-    test = test.flatten()
-
-    # let's see what we can do with a uniform distribution
-    uniform = numpy.linspace(0, 1, 100)
-
-    figure = matplotlib.pyplot.figure()
-
-    ax = figure.add_subplot(1, 1, 1)
-
-    ax.hist(test, bins=100, range=(-1, 1), density=True)
-
-    matplotlib.pyplot.show()
-
-
 
 
 if __name__ == "__main__":
