@@ -1,0 +1,3 @@
+Choosing the right colours to make your plots look good is hard. And making your research as accessible as possible is important. Scheming offers tools to help with both these problems.
+You can generate as many colours as you need that are spread through a uniformly perceptable colour space that you choose and you can view your data as it would appear to as wide a group of people as possible.
+

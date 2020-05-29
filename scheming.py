@@ -23,8 +23,11 @@ class FileRegion(tkinter.Frame):
 
         # the first thing is to make the file opening button
         self.df_open = tkinter.ttk.Button(self, text="Open data source...", command=self._open_file)
+        self.file_name = tkinter.ttk.Label(self, text="Datafile: None")
 
-        self.df_open.pack(side="left", fill="both", expand=True)
+        # load them up
+        self.file_name.pack(side="top", fill="x", expand=True)
+        self.df_open.pack(side="top", fill="both", expand=True)
 
     def _open_file(self):
         """Open the selected data file."""
@@ -36,6 +39,7 @@ class FileRegion(tkinter.Frame):
 
         # first make sure the filename exists
         if filename:
+            self.file_name.config(text="Datafile: " + filename.split("/")[-1])
             try:
                 # we want to set this filename to the
                 self.parent.master.parent.parent.plot_layout.data = numpy.genfromtxt(filename, delimiter="\t")
@@ -50,10 +54,14 @@ class ColourPicker(tkinter.Frame):
         # initialise the frame
         tkinter.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
-        # self.config(bg="red")
 
         # start adding things
         self.label_frame = tkinter.ttk.LabelFrame(self, text="Controls")
+
+        # adding a little discussion here
+        with open("picker_intro.txt", "r") as infile:
+            intro_text = infile.read()
+        self.intro = tkinter.Message(self.label_frame, text=intro_text, width=400)
 
         # make a frame for the sliders and other controls
         self.slider_container = tkinter.Frame(self.label_frame)
@@ -106,6 +114,7 @@ class ColourPicker(tkinter.Frame):
         self.preset_stack.pack(side="left", expand=True)
         self.gen_button.pack(side="right", expand=True)
 
+        self.intro.pack(side="top", fill="x", expand=True)
         self.input_container.pack(side="top", fill="both", expand=True)
         self.slider_container.pack(side="top", fill="both", expand=True)
         self.file_io.pack(side="top", fill="both", expand=True)
@@ -142,7 +151,7 @@ class ColourPicker(tkinter.Frame):
 class Swatch(tkinter.Frame):
     """A colour swatch."""
 
-    def __init__(self, parent, colour, rgb, _hex, *args, **kwargs):
+    def __init__(self, parent, colour, rgb, _hex, index, *args, **kwargs):
         tkinter.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
 
@@ -155,12 +164,15 @@ class Swatch(tkinter.Frame):
         self.coloured = tkinter.Frame(self, bg=colour, height=30)
         self.rgb_name = tkinter.ttk.Label(self.name_frame, text=rgb, background="white", width=14, anchor="center")
         self.hex_name = tkinter.ttk.Label(self.name_frame, text=_hex, background="white", width=14, anchor="center")
+        self.index = tkinter.ttk.Label(self.name_frame, text="{}".format(index), width=3,
+                                       anchor="center", background="white", foreground="#bebebe")
 
         # first do the colour
         self.coloured.pack(side="top", fill="both", expand=True)
 
         # make sure the names are where they need to be
         self.rgb_name.pack(side="left", fill="x", expand=True)
+        self.index.pack(side="left", fill="x", expand=True)
         self.hex_name.pack(side="right", fill="x", expand=True)
 
         # and now the name frame
@@ -251,7 +263,8 @@ class ColourViewer(tkinter.Frame):
                     swatch = Swatch(self.cards[i],
                                     self.parent.scheme.colours[i * n_cols + j].hex,
                                     self.parent.scheme.colours[i * n_cols + j].get_rgb_string(),
-                                    self.parent.scheme.colours[i * n_cols + j].hex)
+                                    self.parent.scheme.colours[i * n_cols + j].hex,
+                                    i * n_cols + j)
                     # add it to the list
                     self.swatches.append(swatch)
 
@@ -415,6 +428,7 @@ class ViewOptions(tkinter.LabelFrame):
 
         # we also need to make sure that we update the colours
         self.parent.colours.viewer.update_colours(**self.colourblind_args[self.index[self.selected]])
+        self.parent.plot.make_plot()
 
 
 class PlotLayoutIntroduction(tkinter.Frame):
@@ -425,12 +439,11 @@ class PlotLayoutIntroduction(tkinter.Frame):
         self.parent = parent
 
         self.message = tkinter.Message(self, text=("Here is where you can customise your plot. "
-                                                   + "\nThe colour, x, y, x_err, and y_err are specified with their "
-                                                   + "index."), width=600)
-        self.plot_button = tkinter.ttk.Button(self, text="Plot", command=self.parent.plot.make_plot)
+                                                   + "\nThe colour is specified with its index, "
+                                                   + "and x, y, x_err, and y_err are specified with the "
+                                                   + "index of their column in your datafile."), width=600)
 
         self.message.pack(side="left", fill="x", expand=True)
-        self.plot_button.pack(side="right", fill="x", expand=True)
 
 
 class PlotLayout(tkinter.ttk.LabelFrame):
@@ -447,11 +460,48 @@ class PlotLayout(tkinter.ttk.LabelFrame):
 
         # self.label_frame = tkinter.ttk.LabelFrame(self, text="Plot Layout")
         self.header = PlotLayoutHeader(self)
-        self.intro = PlotLayoutIntroduction(self)
+
+        # make a frame for the introduction and plot button
+        self.top_frame = tkinter.Frame(self)
+        self.frame = tkinter.Frame(self.top_frame)
+        self.frame.grid_columnconfigure(0, weight=1)
+        self.frame.grid_columnconfigure(1, weight=1)
+        self.frame.grid_columnconfigure(2, weight=1)
+        self.frame.grid_columnconfigure(3, weight=1)
+        self.frame.grid_rowconfigure(0, weight=1)
+        self.frame.grid_rowconfigure(1, weight=1)
+        self.frame.grid_rowconfigure(2, weight=1)
+
+        self.plot_button = tkinter.ttk.Button(self.frame, text="Plot", command=self.plot.make_plot)
+        self.xlim_low = tkinter.ttk.Entry(self.frame, width=10)
+        self.xlim_high = tkinter.ttk.Entry(self.frame, width=10)
+        self.xlim_to = tkinter.ttk.Label(self.frame, text="to", width=2, anchor="center")
+        self.xlim_label = tkinter.ttk.Label(self.frame, text="x range: ", width=9, anchor="center")
+        self.ylim_low = tkinter.ttk.Entry(self.frame, width=10)
+        self.ylim_high = tkinter.ttk.Entry(self.frame, width=10)
+        self.ylim_to = tkinter.ttk.Label(self.frame, text="to", width=2, anchor="center")
+        self.ylim_label = tkinter.ttk.Label(self.frame, text="y range: ", width=9, anchor="center")
+
+        # make the introduction here
+        self.intro = PlotLayoutIntroduction(self.top_frame)
+
         self.entries = []
 
         # self.label_frame.pack(side="top", fill="both", expand=True)
-        self.intro.pack(side="top", fill="x", expand=True)
+        # do the grid things
+        self.plot_button.grid(column=0, row=0, columnspan=4, sticky="nsew")
+        self.xlim_label.grid(column=0, row=1, sticky="nsew")
+        self.xlim_low.grid(column=1, row=1, sticky="nsew")
+        self.xlim_to.grid(column=2, row=1, sticky="nsew")
+        self.xlim_high.grid(column=3, row=1, sticky="nsew")
+        self.ylim_label.grid(column=0, row=2, sticky="nsew")
+        self.ylim_low.grid(column=1, row=2, sticky="nsew")
+        self.ylim_to.grid(column=2, row=2, sticky="nsew")
+        self.ylim_high.grid(column=3, row=2, sticky="nsew")
+
+        self.top_frame.pack(side="top", fill="x", expand=True)
+        self.frame.pack(side="right", fill="both", expand=True)
+        self.intro.pack(side="left", fill="x", expand=True)
         self.header.pack(side="top", fill="x", expand=True)
 
         for i in range(5):
@@ -487,7 +537,7 @@ class PlotRegion(tkinter.ttk.LabelFrame):
 
         self.canvas = self._canvas.get_tk_widget()
         self.canvas.pack(side="left", fill="both", expand=True)
-        
+
         # this is where we define the plot values
         self.lines = []
         self.points = []
@@ -500,10 +550,10 @@ class PlotRegion(tkinter.ttk.LabelFrame):
         self.points = []
         self.errors = []
         self.ax.cla()
-        
+
         self.layout = self.parent.plot_layout
         use_legend = False
-        
+
         # now figure out which elements we plot
         for entry in self.layout.entries:
             if entry.colour_choice.get() != "":
@@ -512,7 +562,7 @@ class PlotRegion(tkinter.ttk.LabelFrame):
                 # first up figure out the colour we can use
                 colour = colours.Colourblind(self.parent.colours.scheme.colours[int(entry.colour_choice.get())].rgb,
                                              linear=False)
-                
+
                 print(self.parent.colours.scheme.colours[int(entry.colour_choice.get())].hex)
                 # and how to view that colour
                 viewer = self.parent.view
@@ -523,7 +573,7 @@ class PlotRegion(tkinter.ttk.LabelFrame):
                 if entry.legend.get() != "":
                     label = entry.legend.get()
                     use_legend = True
-                
+
                 # now check if we are using error bars or not
                 if entry.x_err.get() != "" or entry.y_err.get() != "":
                     if entry.x_err.get() == "":
@@ -532,9 +582,9 @@ class PlotRegion(tkinter.ttk.LabelFrame):
                     else:
                         y_errors = None
                         x_errors = self.layout.data[:, int(entry.y_err.get())]
-                    
+
                     # make the plot and store the result
-                    self.errors.append(self.ax.errorbar(self.layout.data[:, int(entry.x.get())], 
+                    self.errors.append(self.ax.errorbar(self.layout.data[:, int(entry.x.get())],
                                                         self.layout.data[:, int(entry.y.get())],
                                                         yerr=y_errors,
                                                         xerr=x_errors,
@@ -555,13 +605,24 @@ class PlotRegion(tkinter.ttk.LabelFrame):
                                                        self.layout.data[:, int(entry.y.get())],
                                                        color=effective_colour,
                                                        label=label))
-                        
+
         # make the legend
-        
-        self.ax.legend()
-        
+        if use_legend:
+            self.ax.legend()
+
+        # now check the limits
+        if self.layout.xlim_low.get() != "":
+            self.ax.set_xlim(left=float(self.layout.xlim_low.get()))
+        if self.layout.xlim_high.get() != "":
+            self.ax.set_xlim(right=float(self.layout.xlim_high.get()))
+        if self.layout.ylim_low.get() != "":
+            self.ax.set_ylim(bottom=float(self.layout.ylim_low.get()))
+        if self.layout.ylim_high.get() != "":
+            self.ax.set_ylim(top=float(self.layout.ylim_high.get()))
+
         # and draw the values
         self._canvas.draw()
+
 
 class PlotLayoutEntry(tkinter.Frame):
     """The entry fields for the plot layout."""
@@ -575,8 +636,8 @@ class PlotLayoutEntry(tkinter.Frame):
         self.y = tkinter.ttk.Entry(self, width=5, justify='center')
         self.x_err = tkinter.ttk.Entry(self, width=5, justify='center')
         self.y_err = tkinter.ttk.Entry(self, width=5, justify='center')
-        self.type = tkinter.ttk.Entry(self, width=10, justify='center')
-        self.style = tkinter.ttk.Entry(self, width=10, justify='center')
+        self.type = tkinter.ttk.Entry(self, width=10, justify='center', state="disabled")
+        self.style = tkinter.ttk.Entry(self, width=10, justify='center', state="disabled")
         self.legend = tkinter.ttk.Entry(self, width=10, justify='center')
 
         self.colour_choice.pack(side="left", fill="x", expand=True, padx=2)
@@ -601,8 +662,8 @@ class PlotLayoutHeader(tkinter.Frame):
         self.y = tkinter.ttk.Label(self, text="y", anchor="center", width=5)
         self.x_err = tkinter.ttk.Label(self, text="x_err", anchor="center", width=5)
         self.y_err = tkinter.ttk.Label(self, text="y_err", anchor="center", width=5)
-        self.type = tkinter.ttk.Label(self, text="Type", anchor="center", width=10)
-        self.style = tkinter.ttk.Label(self, text="Style", anchor="center", width=10)
+        self.type = tkinter.ttk.Label(self, text="Type", anchor="center", width=10, foreground="gray")
+        self.style = tkinter.ttk.Label(self, text="Style", anchor="center", width=10, foreground="gray")
         self.legend = tkinter.ttk.Label(self, text="Label", anchor="center", width=10)
 
         self.colour_choice.pack(side="left", fill="x", expand=True)
