@@ -32,9 +32,9 @@ class FileRegion(tkinter.Frame):
     def _open_file(self):
         """Open the selected data file."""
         # first let's try a file dialogue
-        filename = tkinter.filedialog.askopenfilename(filetypes=(("Comma Separated Variable", "*.csv"),
+        filename = tkinter.filedialog.askopenfilename(filetypes=(("Data File (tabbed)", "*.dat"),
+                                                                 ("Comma Separated Variable", "*.csv"),
                                                                  ("Tab Separated Variable", "*.tsv"),
-                                                                 ("Data File (tabbed)", "*.dat"),
                                                                  ("Plain Text", ".txt")))
 
         # first make sure the filename exists
@@ -94,7 +94,7 @@ class ColourPicker(tkinter.Frame):
         self.preset = tkinter.StringVar(self)
         self.preset_options = self._preset_options()
         self.preset_label = tkinter.ttk.Label(self.preset_stack, text="Presets", anchor="center")
-        self.preset_menu = tkinter.ttk.Combobox(self.preset_stack, textvariable=self.preset)
+        self.preset_menu = tkinter.ttk.Combobox(self.preset_stack, textvariable=self.preset, state="readonly")
         self.preset_menu['values'] = list(self.preset_options.keys())
         self.preset_menu.current(1)
         self._update_sliders("event_gibberish")
@@ -417,8 +417,6 @@ class ViewOptions(tkinter.LabelFrame):
 
     def _selected(self, event):
         """Signal the change in selection."""
-        print(event)
-
         # now update the button
         self.buttons[self.index[self.selected]].config(relief="raised")
         self.buttons[self.index[event]].config(relief="sunken")
@@ -563,11 +561,9 @@ class PlotRegion(tkinter.ttk.LabelFrame):
                 colour = colours.Colourblind(self.parent.colours.scheme.colours[int(entry.colour_choice.get())].rgb,
                                              linear=False)
 
-                print(self.parent.colours.scheme.colours[int(entry.colour_choice.get())].hex)
                 # and how to view that colour
                 viewer = self.parent.view
                 effective_colour = colour.as_though(**viewer.colourblind_args[viewer.index[viewer.selected]])
-                print(effective_colour)
                 # check the legend
                 label = None
                 if entry.legend.get() != "":
@@ -588,10 +584,14 @@ class PlotRegion(tkinter.ttk.LabelFrame):
                                                         self.layout.data[:, int(entry.y.get())],
                                                         yerr=y_errors,
                                                         xerr=x_errors,
-                                                        markerfacecolor=effective_colour,
-                                                        markeredgecolor=effective_colour,
+                                                        # markerfacecolor=effective_colour,
+                                                        # markeredgecolor=effective_colour,
+                                                        color=effective_colour,
                                                         ecolor=effective_colour,
-                                                        fmt='o',
+                                                        marker=entry.pointstyle,
+                                                        markersize=10,
+                                                        linestyle=entry.linestyle,
+                                                        fillstyle=entry.fillstyle,
                                                         label=label))
                 else:
                     # we don't have errors
@@ -599,12 +599,20 @@ class PlotRegion(tkinter.ttk.LabelFrame):
                     if entry.x.get() == "":
                         self.lines.append(self.ax.plot(self.layout.data[:, int(entry.y.get())],
                                                        color=effective_colour,
-                                                       label=label))
+                                                       label=label,
+                                                       marker=entry.pointstyle,
+                                                       linestyle=entry.linestyle,
+                                                       fillstyle=entry.fillstyle,
+                                                       markersize=10))
                     else:
                         self.lines.append(self.ax.plot(self.layout.data[:, int(entry.x.get())],
                                                        self.layout.data[:, int(entry.y.get())],
                                                        color=effective_colour,
-                                                       label=label))
+                                                       label=label,
+                                                       marker=entry.pointstyle,
+                                                       linestyle=entry.linestyle,
+                                                       fillstyle=entry.fillstyle,
+                                                       markersize=10))
 
         # make the legend
         if use_legend:
@@ -636,18 +644,83 @@ class PlotLayoutEntry(tkinter.Frame):
         self.y = tkinter.ttk.Entry(self, width=5, justify='center')
         self.x_err = tkinter.ttk.Entry(self, width=5, justify='center')
         self.y_err = tkinter.ttk.Entry(self, width=5, justify='center')
-        self.type = tkinter.ttk.Entry(self, width=10, justify='center', state="disabled")
-        self.style = tkinter.ttk.Entry(self, width=10, justify='center', state="disabled")
+
+        # these variables will hold the line and point styles that we can use later
+        self._line_dict = self._linestyle_dict()
+        self._point_dict = self._pointstyle_dict()
+
+        # the style and type are comboboxes
+        self.line = tkinter.ttk.Combobox(self, width=10, justify="center")
+        self.line["values"] = list(self._line_dict.keys())
+        self.line.current(0)  # choose None as a default
+        self.point = tkinter.ttk.Combobox(self, width=10, justify="center")
+        self.point["values"] = list(self._point_dict.keys())
+        self.point.current(0)  # choose None as a default
+        self.fill = tkinter.ttk.Combobox(self, width=5, justify="center", values=["Solid", "Hollow"])
+        self.fill.current(0)
         self.legend = tkinter.ttk.Entry(self, width=10, justify='center')
 
+        # we need to track the selection so that we can use it later
+        self.linestyle = "None"
+        self.pointstyle = "None"
+        self.fillstyle = "full"
+        self.line.bind("<<ComboboxSelected>>", self._set_linestyle)
+        self.point.bind("<<ComboboxSelected>>", self._set_pointstyle)
+        self.fill.bind("<<ComboboxSelected>>", self._set_fillstyle)
+
+        # start managing
         self.colour_choice.pack(side="left", fill="x", expand=True, padx=2)
         self.x.pack(side="left", fill="x", expand=True, padx=2)
         self.y.pack(side="left", fill="x", expand=True, padx=2)
         self.x_err.pack(side="left", fill="x", expand=True, padx=2)
         self.y_err.pack(side="left", fill="x", expand=True, padx=2)
-        self.type.pack(side="left", fill="x", expand=True, padx=2)
-        self.style.pack(side="left", fill="x", expand=True, padx=2)
+        self.line.pack(side="left", fill="x", expand=True, padx=2)
+        self.point.pack(side="left", fill="x", expand=True, padx=2)
+        self.fill.pack(side="left", fill="x", expand=True, padx=2)
         self.legend.pack(side="left", fill="x", expand=True, padx=2)
+
+    def _set_fillstyle(self, event):
+        """Set the fillstyle variable."""
+        if self.fill.get() == "Solid":
+            self.fillstyle = "full"
+        else:
+            self.fillstyle = "none"
+
+    def _set_linestyle(self, event):
+        """Set the linestyle variable."""
+        self.linestyle = self._line_dict[self.line.get()]
+        print(self.linestyle)
+
+    def _set_pointstyle(self, event):
+        """Set the pointstyle variable."""
+        self.pointstyle = self._point_dict[self.point.get()]
+        print(self.pointstyle)
+
+    def _linestyle_dict(self):
+        """Define the map from longform line style to matplotlib abbreviations."""
+        return {"None": "None",
+                "Solid": "-",
+                "Dashed": "--",
+                "Dotted": ":",
+                "Dot-dash": "-."}
+
+    def _pointstyle_dict(self):
+        """Define the map from longform point style to matplotlib abbreviations."""
+        return {"None": "None",
+                "Point": ".",
+                "Circle": "o",
+                "Triangle (Up)": "^",
+                "Triangle (Down)": "v",
+                "Square": "s",
+                "Pentagon": "p",
+                "Hexagon": "h",
+                "Octagon": "8",
+                "Star": "*",
+                "Cross (Line)": "x",
+                "Cross (Solid)": "X",
+                "Plus (Line)": "+",
+                "Plus (Solid)": "P",
+                "Diamond": "D"}
 
 
 class PlotLayoutHeader(tkinter.Frame):
@@ -662,18 +735,20 @@ class PlotLayoutHeader(tkinter.Frame):
         self.y = tkinter.ttk.Label(self, text="y", anchor="center", width=5)
         self.x_err = tkinter.ttk.Label(self, text="x_err", anchor="center", width=5)
         self.y_err = tkinter.ttk.Label(self, text="y_err", anchor="center", width=5)
-        self.type = tkinter.ttk.Label(self, text="Type", anchor="center", width=10, foreground="gray")
-        self.style = tkinter.ttk.Label(self, text="Style", anchor="center", width=10, foreground="gray")
+        self.type = tkinter.ttk.Label(self, text="Line Style", anchor="center", width=10)
+        self.style = tkinter.ttk.Label(self, text="Point Style", anchor="center", width=10)
+        self.fill = tkinter.ttk.Label(self, text="Fill", anchor="center", width=8)
         self.legend = tkinter.ttk.Label(self, text="Label", anchor="center", width=10)
 
-        self.colour_choice.pack(side="left", fill="x", expand=True)
-        self.x.pack(side="left", fill="x", expand=True)
-        self.y.pack(side="left", fill="x", expand=True)
-        self.x_err.pack(side="left", fill="x", expand=True)
-        self.y_err.pack(side="left", fill="x", expand=True)
-        self.type.pack(side="left", fill="x", expand=True)
-        self.style.pack(side="left", fill="x", expand=True)
-        self.legend.pack(side="left", fill="x", expand=True)
+        self.colour_choice.pack(side="left", fill="x", expand=True, padx=2)
+        self.x.pack(side="left", fill="x", expand=True, padx=2)
+        self.y.pack(side="left", fill="x", expand=True, padx=2)
+        self.x_err.pack(side="left", fill="x", expand=True, padx=2)
+        self.y_err.pack(side="left", fill="x", expand=True, padx=2)
+        self.type.pack(side="left", fill="x", expand=True, padx=2)
+        self.style.pack(side="left", fill="x", expand=True, padx=2)
+        self.fill.pack(side="left", fill="x", expand=True, padx=2)
+        self.legend.pack(side="left", fill="x", expand=True, padx=2)
 
 
 class Slider(tkinter.Frame):
