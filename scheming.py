@@ -42,10 +42,8 @@ class FileRegion(tkinter.Frame):
             self.file_name.config(text="Datafile: " + filename.split("/")[-1])
             if ".csv" in filename:
                 delimiter = ","
-                print("comma'd")
             elif ".dat" in filename or ".tsv" in filename:
                 delimiter = "\t"
-                print("tabbed")
             else:
                 delimiter = None
             try:
@@ -62,6 +60,77 @@ class FileRegion(tkinter.Frame):
                     tkinter.messagebox.showerror("Open Source File", "{} got a weird header".format(self.file_name))
 
 
+class ExportWindow(tkinter.Toplevel):
+    """A window for exporting colours."""
+
+    def __init__(self, parent, *args, **kwargs):
+        tkinter.Toplevel.__init__(self, parent, *args, **kwargs)
+        self.parent = parent
+        self.winfo_toplevel().title("Colour Export")
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+        # now we need to make a frame inside it
+        self.top_frame = tkinter.Frame(self, height=400, width=600)
+        self.top_frame.grid_columnconfigure(0, weight=1)
+        self.top_frame.grid_rowconfigure(0, weight=1)
+        self.top_frame.grid_rowconfigure(1, weight=1)
+
+        # now inside that frame we need a textbox and some options
+        self.options = tkinter.Frame(self.top_frame, height=100, width=600)
+        self.box = tkinter.Text(self.top_frame, height=15, width=50)
+
+        # now the options
+        self.output_label = tkinter.ttk.Label(self.options, text="Export as:", anchor="center")
+        self.output_choices = tkinter.ttk.Combobox(self.options, justify="center")
+        self.output_choices["values"] = ("Hex",
+                                         "RGB",
+                                         "Gnuplot",
+                                         "Python")
+        self.output_choices.bind("<<ComboboxSelected>>", self._format_output)
+        self.output_choices.current(0)  # make sure we have a reasonable default
+        self._format_output("doop")  # dumb error event shit
+
+        # pack the options box and set the column and row options
+        self.options.grid(column=0, row=0, sticky="nsew")
+        self.options.grid_columnconfigure(0, weight=1)
+        self.options.grid_columnconfigure(1, weight=1)
+        self.options.grid_rowconfigure(0, weight=1)
+
+        # pack the other things away
+        self.box.grid(column=0, row=1, sticky="nsew")
+        self.output_label.grid(column=0, row=0, sticky="nsew")
+        self.output_choices.grid(column=1, row=0, sticky="nsew")
+        self.top_frame.grid(column=0, row=0, sticky="nsew")
+
+    def _format_output(self, event):
+        """Format the colour export."""
+        # first we need to get the colours
+        colour_list = self.parent.parent.scheme.colours
+
+        # now iterate through and figure out the formatting
+        export_string = ""
+        for index, colour in enumerate(colour_list):
+            if self.output_choices.get() == "Hex":
+                export_string += colour.hex + "\n"
+            elif self.output_choices.get() == "RGB":
+                export_string += colour.get_rgb_string() + "\n"
+            elif self.output_choices.get() == "Gnuplot":
+                export_string += "set style line {} lc \"{}\"\n".format(index + 1, colour.hex)
+            elif self.output_choices.get() == "Python":
+                export_string += "\'{}\',\n".format(colour.hex)
+            else:
+                tkinter.message.showerror("Export Issues", "Somehow you chose an option that doesn't exist... gg")
+
+        # some additional processing for the Python list
+        if self.output_choices.get() == "Python":
+            export_string = "[" + export_string[:-2] + "]"
+
+        # now delete the contents of the box and insert the new format
+        self.box.delete("1.0", tkinter.END)
+        self.box.insert("1.0", export_string)
+
+
 class ColourPicker(tkinter.Frame):
     """The colour picking region of the application."""
 
@@ -74,7 +143,7 @@ class ColourPicker(tkinter.Frame):
         self.label_frame = tkinter.ttk.LabelFrame(self, text="Controls")
 
         # adding a little discussion here
-        with open("picker_intro.txt", "r") as infile:
+        with open("files/picker_intro.txt", "r") as infile:
             intro_text = infile.read()
         self.intro = tkinter.Message(self.label_frame, text=intro_text, width=400)
 
@@ -86,11 +155,11 @@ class ColourPicker(tkinter.Frame):
         self.file_io = FileRegion(self.label_frame)  # this will contain data selection and saving
 
         # now get the sliders
-        self.hue = Sliders(self.slider_container, 0, 360)
+        self.hue = Sliders(self.slider_container, 0, 360, "images/hue_slider.png")
         self.hue.label.config(text="Hue")
-        self.chroma = Sliders(self.slider_container, 0, 100)
+        self.chroma = Sliders(self.slider_container, 0, 100, "images/chroma_slider.png")
         self.chroma.label.config(text="Chroma")
-        self.light = Sliders(self.slider_container, 0, 100)
+        self.light = Sliders(self.slider_container, 0, 100, "images/light_slider.png")
         self.light.label.config(text="Light")
 
         # add the sliders to the list
@@ -118,6 +187,7 @@ class ColourPicker(tkinter.Frame):
         # the button to generate the colours
         self.gen_button = tkinter.ttk.Button(self.input_container, text="Generate", command=self.parent.reroll)
         self.rand_button = tkinter.ttk.Button(self.input_container, text="Reorder", command=self.parent.reorder)
+        self.export_button = tkinter.ttk.Button(self.input_container, text="Export", command=self._export)
 
         # now we can start packing things
         self.num_label.pack(side="top", expand=True)
@@ -129,6 +199,7 @@ class ColourPicker(tkinter.Frame):
         self.num_stack.pack(side="left", expand=True)
         self.preset_stack.pack(side="left", expand=True)
         self.rand_button.pack(side="right", expand=True)
+        self.export_button.pack(side="right", expand=True)
         self.gen_button.pack(side="right", expand=True)
 
         self.intro.pack(side="top", fill="x", expand=True)
@@ -136,6 +207,10 @@ class ColourPicker(tkinter.Frame):
         self.slider_container.pack(side="top", fill="both", expand=True)
         self.file_io.pack(side="top", fill="both", expand=True)
         self.label_frame.pack(fill="both", expand=True)
+
+    def _export(self):
+        """Export the colours."""
+        ExportWindow(self)
 
     def _preset_options(self):
         """Define a dictionary of the preset options."""
@@ -349,6 +424,9 @@ class ColourRegion(tkinter.Frame):
         # now the viewer for the colours
         self.viewer = ColourViewer(self, height=300)
 
+        # make sure we're using the default colour preset
+        self.reroll(first=True)
+
         self.picker.grid(column=0, row=0, sticky="nsew")
         self.viewer.grid(column=1, row=0, sticky="nsew")
         # self.picker.pack(side="left", fill="both", expand=True)
@@ -362,7 +440,7 @@ class ColourRegion(tkinter.Frame):
         # and then call the reordering function
         self.viewer._reorder_colours()
 
-    def reroll(self):
+    def reroll(self, first=False):
         """Regenerate the colours and draw them."""
         # we should see if the number of colours has changed
         # and if so we should generate a new scheme
@@ -378,7 +456,8 @@ class ColourRegion(tkinter.Frame):
         self.scheme.reroll()
 
         # and then draw them
-        self.viewer._draw()
+        if not first:
+            self.viewer._draw()
 
 
 class ViewOptions(tkinter.LabelFrame):
@@ -575,6 +654,26 @@ class PlotRegion(tkinter.ttk.LabelFrame):
         self.points = []
         self.errors = []
 
+        self._make_default()
+
+    def _make_default(self):
+        """Create the logo as the default plot."""
+        # read in the data
+        data = numpy.genfromtxt("files/cone_sensitivity.csv", delimiter=",", names=True)
+
+        self.ax.plot(data["x"][data["x"] < 600], data["S"][data["x"] < 600], label="S", color='b', alpha=0.5)
+        self.ax.plot(data["x"], data["M"], label="M", color="g", alpha=0.5)
+        self.ax.plot(data["x"], data["L"], label="L", color="r", alpha=0.5)
+
+        self.ax.fill_between(data["x"][data["x"] < 600], data["S"][data["x"] < 600], 0, color="b", alpha=0.1)
+        self.ax.fill_between(data["x"], data["M"], 0, color="g", alpha=0.1)
+        self.ax.fill_between(data["x"], data["L"], 0, color="r", alpha=0.1)
+
+        self.ax.set_xlim(390, 700)
+        self.ax.set_ylim(0, 1.1)
+        self.ax.legend()
+        self._canvas.draw()
+
     def make_plot(self):
         """Make the given plot."""
         # first clear the plotables and the axes
@@ -723,12 +822,10 @@ class PlotLayoutEntry(tkinter.Frame):
     def _set_linestyle(self, event):
         """Set the linestyle variable."""
         self.linestyle = self._line_dict[self.line.get()]
-        print(self.linestyle)
 
     def _set_pointstyle(self, event):
         """Set the pointstyle variable."""
         self.pointstyle = self._point_dict[self.point.get()]
-        print(self.pointstyle)
 
     def _linestyle_dict(self):
         """Define the map from longform line style to matplotlib abbreviations."""
@@ -802,8 +899,8 @@ class Slider(tkinter.Frame):
                                         orient="vertical", command=self._callback)
 
         # and pack the things
-        self.text_box.pack(side="top", expand=True, padx=5, pady=3)
-        self.slider.pack(side="top", expand=True, pady=3, padx=5)
+        self.text_box.pack(side="top", expand=True, pady=3)
+        self.slider.pack(side="top", expand=True, pady=3)
 
     def _callback(self, value):
         """Round to an integer and verify the limits are reasonable."""
@@ -819,10 +916,25 @@ class Slider(tkinter.Frame):
                 self.parent.low.value.set(round(float(value)))
 
 
+class SliderImage(tkinter.Frame):
+    """A frame containing a reference image for a set of sliders."""
+
+    def __init__(self, parent, file, *args, **kwargs):
+        tkinter.Frame.__init__(self, parent, *args, **kwargs)
+        self._image = tkinter.PhotoImage(master=self, file=file)
+        self.image = tkinter.Label(self, image=self._image)
+        self.image.image = self._image
+
+        self.label = tkinter.ttk.Label(self, text="___", width=2, anchor="center")
+
+        self.label.pack(side="top", expand=True, pady=5)
+        self.image.pack(side="top", fill="both", expand=True)
+
+
 class Sliders(tkinter.Frame):
     """A frame containing a high and low slider."""
 
-    def __init__(self, parent, low, high, *args, **kwargs):
+    def __init__(self, parent, low, high, file, *args, **kwargs):
         tkinter.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
         self.config(relief="sunken")
@@ -834,12 +946,15 @@ class Sliders(tkinter.Frame):
         self.low = Slider(self, high, low)
         self.high = Slider(self, high, low)
 
+        # self.dumb_shit = tkinter.Image(self, file="./images/hue_slider.png")
+        self.middle = SliderImage(self, file)
         self.low.value.set(low)
         self.high.value.set(high)
 
         # pack them in the region
         self.label.pack(side="top", fill="x", expand=True)
         self.low.pack(side="left", expand=True)
+        self.middle.pack(side="left", expand=True)
         self.high.pack(side="left", expand=True)
 
 
@@ -869,6 +984,9 @@ class MainApplication(tkinter.Frame):
         self.plot = PlotRegion(self, height=750, width=750)
         self.plot_layout = PlotLayout(self, height=450, width=750, text="Plot Layout")
         self.view = ViewOptions(self, height=150, width=750, text="Viewing Options")
+
+        # add some beautification and consistent branding
+        self.plot._make_default()
 
         # now do some geometry management
         self.colours.grid(column=0, row=0, sticky="nsew")
