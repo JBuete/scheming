@@ -40,11 +40,26 @@ class FileRegion(tkinter.Frame):
         # first make sure the filename exists
         if filename:
             self.file_name.config(text="Datafile: " + filename.split("/")[-1])
+            if ".csv" in filename:
+                delimiter = ","
+                print("comma'd")
+            elif ".dat" in filename or ".tsv" in filename:
+                delimiter = "\t"
+                print("tabbed")
+            else:
+                delimiter = None
             try:
                 # we want to set this filename to the
-                self.parent.master.parent.parent.plot_layout.data = numpy.genfromtxt(filename, delimiter="\t")
+                self.parent.master.parent.parent.plot_layout.data = numpy.genfromtxt(filename, delimiter=delimiter)
             except OSError:
                 tkinter.messagebox.showerror("Open Source File", "Failed to read in {}".format(filename))
+            except ValueError:
+                try:
+                    self.parent.master.parent.parent.plot_layout.data = numpy.genfromtxt(filename,
+                                                                                         delimiter=delimiter,
+                                                                                         skip_header=1)
+                except ValueError:
+                    tkinter.messagebox.showerror("Open Source File", "{} got a weird header".format(self.file_name))
 
 
 class ColourPicker(tkinter.Frame):
@@ -102,6 +117,7 @@ class ColourPicker(tkinter.Frame):
 
         # the button to generate the colours
         self.gen_button = tkinter.ttk.Button(self.input_container, text="Generate", command=self.parent.reroll)
+        self.rand_button = tkinter.ttk.Button(self.input_container, text="Reorder", command=self.parent.reorder)
 
         # now we can start packing things
         self.num_label.pack(side="top", expand=True)
@@ -112,6 +128,7 @@ class ColourPicker(tkinter.Frame):
 
         self.num_stack.pack(side="left", expand=True)
         self.preset_stack.pack(side="left", expand=True)
+        self.rand_button.pack(side="right", expand=True)
         self.gen_button.pack(side="right", expand=True)
 
         self.intro.pack(side="top", fill="x", expand=True)
@@ -224,6 +241,15 @@ class ColourViewer(tkinter.Frame):
             colour = colours.Colourblind(self.parent.scheme.colours[i].rgb, linear=False).as_though(**args)
             self.swatches[i].coloured.config(bg=colour)
 
+    def _reorder_colours(self):
+        """Reorder the colours."""
+        n_colours = len(self.swatches)
+        viewer = self.parent.parent.view
+        self.update_colours(**viewer.colourblind_args[viewer.index[viewer.selected]])
+        for i in range(n_colours):
+            self.swatches[i].rgb_name.config(text=self.parent.scheme.colours[i].get_rgb_string())
+            self.swatches[i].hex_name.config(text=self.parent.scheme.colours[i].hex)
+
     def _draw(self):
         """Draw the colourscheme in a nicer way."""
         # first let's check the number of colours that we're looking at
@@ -327,6 +353,14 @@ class ColourRegion(tkinter.Frame):
         self.viewer.grid(column=1, row=0, sticky="nsew")
         # self.picker.pack(side="left", fill="both", expand=True)
         # self.viewer.pack(side="left", fill="both", expand=True)
+
+    def reorder(self):
+        """Reorder the colours."""
+        # shuffle them
+        numpy.random.shuffle(self.scheme.colours)
+
+        # and then call the reordering function
+        self.viewer._reorder_colours()
 
     def reroll(self):
         """Regenerate the colours and draw them."""
